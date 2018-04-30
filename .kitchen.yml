@@ -1,6 +1,4 @@
 ---
-<% @vagrant = system('which vagrant 2>&1 >/dev/null') %>
-<% @version = '2017.7.4' %>
 driver:
   name: docker
   use_sudo: false
@@ -19,14 +17,13 @@ provisioner:
   salt_install: bootstrap
   salt_version: latest
   salt_bootstrap_url: https://bootstrap.saltstack.com
-  salt_bootstrap_options: -X stable <%= @version %>
+  salt_bootstrap_options: -X stable 2017.7.4
   log_level: info
   is_file_root: true
   require_chef: false
-  retry_on_exit_code:
-    - 139
-  max_retries: 2
   salt_copy_filter:
+    - '*.pyc'
+    - __pycache__
     - .bundle
     - .git
     - .gitignore
@@ -38,141 +35,24 @@ provisioner:
     - .travis.yml
   state_top:
     base:
-      "os:Windows":
-        - match: grain
-        - windeps
       "*":
         - git.salt
+        - python.pyzmq
+  pillars:
+    top.sls:
+      base:
+        "*":
+          - jenkins
+    jenkins.sls:
+      test_git_url: git://github.com/saltstack/salt.git
+      test_git_commit: 2018.3
+      tornado:
+        version: '==5.0.2'
+      pyzmq:
+        version: '==17.0.0'
 platforms:
-  - name: fedora
-    driver_config:
-      image: fedora:latest
-      run_command: /usr/lib/systemd/systemd
-    provisioner:
-      salt_bootstrap_options: -X git v<%= @version %> >/dev/null
   - name: centos-7
     driver_config:
       run_command: /usr/lib/systemd/systemd
-  - name: centos-6
-    driver_config:
-      run_command: /sbin/init
-      provision_command:
-        - yum install -y upstart
-    provisioner:
-      salt_bootstrap_options: -P -y -x python2.7 -X git v<%= @version %> >/dev/null
-      salt_bootstrap_url: https://raw.githubusercontent.com/saltstack/salt-bootstrap/develop/bootstrap-salt.sh
-  - name: ubuntu-rolling
-    driver_config:
-      image: ubuntu:rolling
-      run_command: /lib/systemd/systemd
-    provisioner:
-      salt_bootstrap_url: https://raw.githubusercontent.com/saltstack/salt-bootstrap/develop/bootstrap-salt.sh
-  - name: ubuntu-16.04
-    driver_config:
-      run_command: /lib/systemd/systemd
-  - name: ubuntu-14.04
-    driver_config:
-      run_command: /sbin/init
-      provision_command:
-        - rm -f /sbin/initctl
-        - dpkg-divert --local --rename --remove /sbin/initctl
-  - name: debian-8
-    driver_config:
-      run_command: /lib/systemd/systemd
-      provision_command:
-        - apt-get install -y dbus
-        - echo 'L /run/docker.sock - - - - /docker.sock' > /etc/tmpfiles.d/docker.conf
-  - name: debian-9
-    driver_config:
-      run_command: /lib/systemd/systemd
-  - name: arch
-    driver_config:
-      image: base/archlinux
-      run_command: /usr/lib/systemd/systemd
-      provision_command:
-        - pacman -Syu --noconfirm systemd
-        - systemctl enable sshd
-        - echo 'L /run/docker.sock - - - - /docker.sock' > /etc/tmpfiles.d/docker.conf
-    provisioner:
-      salt_bootstrap_options: -X git v<%= @version %> >/dev/null
-  - name: opensuse
-    driver_config:
-      run_command: /usr/lib/systemd/systemd
-      provision_command:
-        - systemctl enable sshd.service
-        - echo 'L /run/docker.sock - - - - /docker.sock' > /etc/tmpfiles.d/docker.conf
-    provisioner:
-      salt_bootstrap_options: -X git v<%= @version %> >/dev/null
-<% if @vagrant != false %>
-  - name: windows-2012r2
-    driver:
-      box: mwrock/Windows2012R2
-      communicator: winrm
-      name: vagrant
-      gui: true
-      username: Vagrant
-      password: vagrant
-    provisioner:
-      init_environment: |
-        Clear-Host
-        $AddedLocation ="c:\salt;c:\salt\bin\Scripts"
-        $Reg = "Registry::HKLM\System\CurrentControlSet\Control\Session Manager\Environment"
-        $OldPath = (Get-ItemProperty -Path "$Reg" -Name PATH).Path
-        $NewPath= $OldPath + ’;’ + $AddedLocation
-        Set-ItemProperty -Path "$Reg" -Name PATH –Value $NewPath
-      salt_bootstrap_url: https://raw.githubusercontent.com/saltstack/salt-bootstrap/develop/bootstrap-salt.ps1
-      salt_bootstrap_options: ''
-  - name: windows-2016
-    driver:
-      box: mwrock/Windows2016
-      communicator: winrm
-      name: vagrant
-      username: Vagrant
-      password: vagrant
-      gui: true
-    provisioner:
-      init_environment: |
-        Clear-Host
-        $AddedLocation ="c:\salt;c:\salt\bin\Scripts"
-        $Reg = "Registry::HKLM\System\CurrentControlSet\Control\Session Manager\Environment"
-        $OldPath = (Get-ItemProperty -Path "$Reg" -Name PATH).Path
-        $NewPath= $OldPath + ’;’ + $AddedLocation
-        Set-ItemProperty -Path "$Reg" -Name PATH –Value $NewPath
-      salt_bootstrap_url: https://raw.githubusercontent.com/saltstack/salt-bootstrap/develop/bootstrap-salt.ps1
-      salt_bootstrap_options: ''
-<% end %>
 suites:
   - name: py2
-    provisioner:
-      pillars:
-        top.sls:
-          base:
-            "os:Windows":
-              - match: grain
-              - windows
-            "*":
-              - jenkins
-        jenkins.sls:
-          test_git_url: git://github.com/<%= ENV["GITHUB_USER"] || "saltstack" %>/salt.git
-          test_git_commit: <%= ENV['TRAVIS_BRANCH'] == 'master' ? 'develop' : ENV['TRAVIS_BRANCH'] %>
-        windows.sls:
-          virtualenv_path: 'c:\Python27\Scripts\pip.exe'
-  - name: py3
-    excludes:
-      - centos-6
-      - ubuntu-1404
-    provisioner:
-      pillars:
-        top.sls:
-          base:
-            "os:Windows":
-              - match: grain
-              - windows
-            "*":
-              - jenkins
-        jenkins.sls:
-          test_git_url: git://github.com/<%= ENV["GITHUB_USER"] || "saltstack" %>/salt.git
-          test_git_commit: <%= ENV['TRAVIS_BRANCH'] == 'master' ? 'develop' : ENV['TRAVIS_BRANCH'] %>
-          py3: true
-        windows.sls:
-          virtualenv_path: 'c:\Program Files (x86)\Python35-32\Scripts\pip.exe'
